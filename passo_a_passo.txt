@@ -1,0 +1,166 @@
+***** de dentro para fora entities > controllers > rotas
+
+1.go mod init
+
+2.criar go.main e go get -u github.com/gin-gonic/gin
+
+3. em main:
+ 
+
+func main() {   //!3.Começar criando uma primeira rota 
+	app := gin.Default() //!4. Criar uma instância do gin
+	app.GET("/v1", func(c *gin.Context) { 
+		c.JSON(http.StatusOK, gin.H{          ********gin.H ajuda a preparar os dados que queremos enviar como resposta para quem está   
+                                                            solicitando algo ao nosso servidor json etiqueta como application/json
+	          "Ok" : true, 
+		})
+	}) 
+
+	app.Run("localhost:3001")
+}
+
+5.run go.main testar no insomnia um get localhost:3001/v1 
+6. Criar pasta api, dentro de api criar outra pasta chamada routes, dentro de routes criar outra file main.go.
+7. Em api, criar pasta controllers com uma file tweetcontroller.go dentro. 
+*Será onde "guardaremos" os tweets, visto essa api não tem conexão com banco de dados colocaremos tudo dentro de um slice.
+8. em tweetcontroller criar uma struct chamada tweet controller com uma var chamada tweets que é um slice de []Tweet
+* será necessário criar essa entidade
+9. Em api criar uma pasta chamada intities com um arquivo chamdo Tweet.go
+10. Em tweet go criar uma struct de tweet e uma função NewTweet responsável por retornar a nova struct de tweet
+  *go get "github.com/pborman/uuid"(ou github.com/google/uuid) no terminal  e import "github.com/pborman/uuid"
+11. Ir em TweetController e importar a entidade criada em Tweet.go a file será modificada assim :
+
+de
+ 
+package controllers
+
+type tweetController struct {
+	tweets []Tweet ******  aqui teremos uma var tweet que vai ser uma slice de Tweet
+}
+
+para 
+
+package controllers
+
+import (
+	entities "github.com/MLCavalcante/api-gin/api/entities" 
+)
+
+type tweetController struct {
+	tweets []entities.Tweet  ********* aqui teremos uma var tweet que vai ser uma slice de Tweet
+}
+
+12.Ainda em tweetController criar uma nova func:
+
+func NewTweetController() *tweetController {
+
+	return &tweetController{}
+}
+
+...para referenciar a struct privada
+
+13.Em tweetController para definir um método GET para a struct referenciamos o TweetController e atribuímos a função à ele:
+
+func (t *tweetController) FindAll(ctx *gin.Context) {
+	ctx.JSON(http.StatusOK, t.tweets) 
+} 
+
+14: Depois vamos para rotas e fazemos as seguintes modificações:
+
+package routes
+
+import (
+	controllers "github.com/MLCavalcante/api-gin/api/controllers"
+	"github.com/gin-gonic/gin"
+	)        
+
+func AppRoutes(router *gin.Engine) *gin.RouterGroup { **** aqui vamos criar um grupo de rotas relacioandas a tweet
+	tweetController := controllers.NewTweetController() **** para acessar a função que referencia a struct privada
+      v1:= router.Group("/v1")
+      {                                                  **** aqui colocamos alguams rotas relacionadas a api na sua versão v1
+	v1.GET("/tweets", tweetController.FindAll)
+                                                      **** quando bater em /tweets, colocamos o tweetController FindAll
+      }
+      return v1                         **** var tipo router group exatamente o que difinimos como retorno
+
+}
+
+
+15. Voltamos para a main.go do package main do projeto e fazemos as seguintes modificações:
+
+package main
+
+import (
+ routes "github.com/MLCavalcante/api-gin/api/routes"  ****** importar pkg routes
+
+	    "github.com/gin-gonic/gin"
+)
+
+func main() {   
+	app := gin.Default() 
+        
+    routes.AppRoutes(app)                     ***** chama a função de routes e passa o app
+	
+
+	app.Run("localhost:3001")
+}
+	 
+16. run main.go no terminal para verificar se continua funcionando, depois no insomnia um get em http://localhost:3001/v1/tweets que retornará null, pois não temos nenhum tweet gravado no slice de tweets. Para isso criaremos a função de POST.
+
+17. Voltamos para controllers e criamos a seguinte func para o método POST:
+
+func (t *tweetController) Create(ctx *gin.Context) {   *****função tipo POST gera um body da req 
+	tweet := entities.NewTweet()        
+       ********nesse momento temos um novo tweet instanciado, pegamos o body e vamos fazer um append ( colocar no final do nosso slice) para isso, atribuímos a essa nova var tweet.
+       
+       ******** O BindJSon vai unir o nosso body(ex: {"description": "tuiter"}) com o id da struct de Newtweet em tweet
+	
+       if err := ctx.BindJSON(&tweet); err != nil {      *** se der erro
+		return 
+	} 
+
+	t.tweets = append(t.tweets, *tweet)   ****** essa linha está adicionando um novo tweet ao nosso conjunto de tweets existente
+    ctx.JSON(http.StatusOK, t.tweets)
+} 
+
+
+18. Depois voltamos para rotas e incluimos o POST
+
+v1.GET("/tweets", tweetController.FindAll) ***** quando bater em /tweets, colocamos o tweetController FindAll
+v1.POST("/tweet", tweetController.Create) <----aqui 
+
+19. Reiniciar a api e ir para o insomnia req POST para http://localhost:3001/v1/tweet 
+JSON 
+
+{
+	"description": "Meu primeiro Tweet"
+}
+
+retornará um id e um tweet(description).
+
+20. Voltamos ao controller para criar o método DELETE : 
+
+func (t *tweetController) Delete(ctx *gin.Context) { ***** para deletar um tweet específico precisamos receber um param
+    id := ctx.Param("id")
+
+	for idx, tweet := range t.tweets{
+      if tweet.ID == id{                     ****** se o meu tweet.id for igual ao id do param
+		t.tweets = append(t.tweets[0:idx], t.tweets[idx+1:]... ) 
+        return
+	  }                           
+	}
+
+	ctx.JSON(http.StatusNotFound, gin.H{
+		"error": "tweet not found",
+	}) 
+} 
+
+*******    Na linha "t.tweets = append(t.tweets[0:idx], t.tweets[idx+1:]... )" , utilizamos a função append para remover o tweet encontrado do slice t.tweets, substituindo t.tweets[0:idx] pelo trecho t.tweets[idx+1:]. Isso cria um novo slice que contém tudo antes do índice idx e tudo após o índice idx, excluindo o tweet que queremos deletar. "reslicing"
+
+21. vá para routes e inclua:
+v1.DELETE("/tweet/:id", tweetController.Delete)
+
+22. go para o insomnia criar um req delete para http://localhost:3001/v1/tweet/id-do-tweet
+retornará tweet not found. 
+	
+
